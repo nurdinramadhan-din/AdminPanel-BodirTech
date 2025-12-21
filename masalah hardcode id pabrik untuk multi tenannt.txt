@@ -1,0 +1,10 @@
+Masalah Hardcode ID (Apakah perlu diubah?) 🛠️
+Saat ini di dalam script trigger, kita menulis ID Pabrik secara statis (ae176f...) dan Action Type (AUTO).
+
+Saran Saya: JANGAN UBAH DULU. Biarkan hardcode itu di sana. Kenapa?
+
+Stabilitas: Sistem baru saja sembuh dari "koma". Mengubah kodingan sekarang berisiko membuatnya error lagi.
+
+Konteks Pabrik: Selama Anda hanya mengelola 1 Pabrik Utama, hardcode ini 100% Aman dan Valid.
+
+Kapan harus diubah? Nanti, jika Anda membuka Cabang Pabrik Kedua (Multi-tenant), barulah kita ganti kodingannya menjadi dinamis. Untuk sekarang, ini solusi yang pragmatis dan solid.
