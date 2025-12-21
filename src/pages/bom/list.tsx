@@ -124,7 +124,7 @@ export const BomList = () => {
                 rowKey="id"
                 expandable={{
                     expandedRowRender,
-                    rowExpandable: (record) => true,
+                    rowExpandable: () => true,
                     expandIcon: ({ expanded, onExpand, record }) => 
                         expanded ? (
                             <DownOutlined onClick={e => onExpand(record, e)} />
