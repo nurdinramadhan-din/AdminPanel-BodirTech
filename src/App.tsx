@@ -1,3 +1,4 @@
+import { useList, useGetIdentity } from "@refinedev/core";
 import React from "react";
 import { BrowserRouter, Outlet, Route, Routes } from "react-router-dom";
 import { App as AntdApp } from "antd";
@@ -50,43 +51,119 @@ import { ProjectEdit } from "./pages/projects/edit";
 
 import { ScannerPage } from "./pages/scanner";
 
+import { MachineControl } from "./pages/machines/index";
+
 // Komponen Halaman Dashboard 
 const DashboardPage = () => {
+  // 1. Ambil Data Tren (Untuk KPI Output Hari Ini & Grafik)
+  const { data: trendData, isLoading: loadingTrend } = useList({
+    resource: "view_dashboard_daily_trend",
+    pagination: { mode: "off" }, // Ambil semua data (rekap harian)
+    sorters: [{ field: "date", order: "desc" }] // Yang terbaru paling atas
+  });
+
+  // 2. Ambil Data Status Mesin (Untuk KPI Mesin Aktif)
+  const { data: machineData, isLoading: loadingMachine } = useList({
+    resource: "view_live_machine_status",
+    pagination: { mode: "off" },
+    liveMode: "auto" // ✅ Auto-update jika ada perubahan status!
+  });
+
+  // 3. Ambil Data Karyawan (Total User)
+  const { data: profileData, isLoading: loadingProfile } = useList({
+    resource: "profiles",
+    pagination: { mode: "off" } 
+  });
+
+  // --- LOGIKA PERHITUNGAN (KALKULASI) ---
+  
+  // A. Hitung Output Hari Ini
+  // Ambil tanggal hari ini (YYYY-MM-DD) sesuai zona waktu lokal
+  const todayStr = new Date().toLocaleDateString('en-CA'); 
+  const todayStats = trendData?.data.find((d: any) => d.date === todayStr);
+  const todayOutput = todayStats?.total_output || 0;
+
+  // B. Hitung Mesin Aktif (Status = RUNNING)
+  const totalMachines = machineData?.total || 0;
+  // Filter mesin yang statusnya 'RUNNING' (Perhatikan huruf besar/kecil sesuai DB)
+  const activeMachines = machineData?.data.filter(
+      (m: any) => m.current_status === 'RUNNING'
+  ).length || 0;
+
+  // C. Total Karyawan
+  const totalEmployees = profileData?.total || 0;
+
+  // D. Mockup SPK Selesai (Karena kita belum buat tabel SPK, kita random dulu atau 0)
+  // Nanti diganti dengan useList resource="spk_bundles"
+  const completedSPK = 0; 
+
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       
-      {/* 1. Header */}
+      {/* 1. Header Section */}
       <div className="flex justify-between items-end">
         <div>
           <h1 className="text-3xl font-bold text-white">🏭 Command Center</h1>
           <p className="text-slate-400 mt-1">Real-time monitoring produksi pabrik.</p>
         </div>
         <div className="text-right hidden md:block">
-          <p className="text-sm text-slate-500">Last updated:</p>
-          <p className="text-emerald-400 font-mono">Just now</p>
+          <p className="text-sm text-slate-500">System Status:</p>
+          <div className="flex items-center gap-2 justify-end">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            </span>
+            <p className="text-emerald-400 font-mono text-sm">LIVE DATA</p>
+          </div>
         </div>
       </div>
 
-      {/* 2. KPI Cards Row */}
+      {/* 2. KPI Cards Row (DATA SUDAH DINAMIS) */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatsCard title="Total Output Hari Ini" value="24,500" trend="+12%" trendUp={true} icon={Activity} />
-        <StatsCard title="Mesin Aktif" value="10 / 12" trend="-2" trendUp={false} icon={Layers} />
-        <StatsCard title="SPK Selesai" value="8" trend="+3" trendUp={true} icon={TrendingUp} />
-        <StatsCard title="Total Karyawan" value="45" icon={Users} />
+        
+        {/* KARTU 1: OUTPUT HARI INI */}
+        <StatsCard 
+            title="Output Hari Ini" 
+            value={loadingTrend ? "..." : todayOutput.toLocaleString()} 
+            trend={todayOutput > 0 ? "Produksi Jalan" : "Menunggu"} 
+            trendUp={todayOutput > 0} 
+            icon={Activity} 
+        />
+        
+        {/* KARTU 2: MESIN AKTIF */}
+        <StatsCard 
+            title="Mesin Aktif" 
+            value={loadingMachine ? "..." : `${activeMachines} / ${totalMachines}`} 
+            trend={activeMachines > 0 ? `${Math.round((activeMachines/totalMachines)*100)}% Utilization` : "No Activity"} 
+            trendUp={activeMachines > 0} 
+            icon={Layers} 
+        />
+        
+        {/* KARTU 3: SPK SELESAI (Placeholder) */}
+        <StatsCard 
+            title="SPK Selesai" 
+            value={completedSPK.toString()} 
+            trend="Minggu Ini" 
+            trendUp={true} 
+            icon={TrendingUp} 
+        />
+        
+        {/* KARTU 4: TOTAL KARYAWAN */}
+        <StatsCard 
+            title="Total Karyawan" 
+            value={loadingProfile ? "..." : totalEmployees.toString()} 
+            icon={Users} 
+        />
       </div>
 
-      {/* 3. Main Chart & Map Grid */}
+      {/* 3. Grafik & Peta (Pastikan komponen ini sudah menggunakan useList di dalamnya juga) */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full">
-        {/* Grafik mengambil 2 kolom */}
         <ProductionChart />
-        
-        {/* Peta Mesin mengambil 1 kolom */}
         <MiniFloorMap />
       </div>
     </div>
   );
 };
-
 function App() {
   return (
     <BrowserRouter>
@@ -109,6 +186,14 @@ function App() {
                 list: "/dashboard",
                 meta: { label: "Dashboard" },
               },
+
+              //Machine
+              {
+                name: "machines",
+                list: "/machines",
+                meta: { label: "Kontrol Mesin" }, 
+              },
+
               // GUDANG MATERIAL
               {
                 name: "materials",
@@ -185,6 +270,9 @@ function App() {
               >
                 {/* 1. Dashboard Index */}
                 <Route path="/dashboard" element={<DashboardPage />} />
+
+                {/*HALAMAN MESIN */}
+                <Route path="/machines" element={<MachineControl />} />
                 
                 {/* Redirect root (/) ke /dashboard */}
                 <Route index element={<NavigateToResource resource="dashboard" />} />

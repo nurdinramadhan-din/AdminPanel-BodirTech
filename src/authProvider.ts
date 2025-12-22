@@ -36,7 +36,7 @@ const authProvider: AuthBindings = {
     };
   },
 
-  // --- FUNGSI REGISTER (INI YANG TADI HILANG) ---
+  // --- FUNGSI REGISTER ---
   register: async ({ email, password }) => {
     try {
       const { data, error } = await supabaseClient.auth.signUp({
@@ -55,7 +55,6 @@ const authProvider: AuthBindings = {
         };
       }
 
-      // Jika sukses daftar
       if (data) {
         return {
           success: true,
@@ -63,7 +62,7 @@ const authProvider: AuthBindings = {
         };
       }
     } catch (error) {
-       return {
+      return {
         success: false,
         error: {
           name: "RegisterError",
@@ -114,12 +113,31 @@ const authProvider: AuthBindings = {
   },
 
   getPermissions: async () => null,
-  
+
+  // --- ✅ BAGIAN PENTING YANG DIREVISI ---
+  // Fungsi ini sekarang mengambil data detail dari tabel 'profiles'
   getIdentity: async () => {
-    const { data } = await supabaseClient.auth.getUser();
-    const { user } = data;
+    // 1. Ambil user dari Auth Supabase
+    const { data: { user } } = await supabaseClient.auth.getUser();
 
     if (user) {
+      // 2. Query ke tabel 'profiles' untuk mendapatkan organization_id, nama, dll
+      const { data: profile } = await supabaseClient
+        .from("profiles")
+        .select("full_name, avatar, organization_id") // Pastikan kolom ini ada di tabel profiles
+        .eq("id", user.id)
+        .single();
+
+      // 3. Gabungkan data user auth dengan data profile database
+      if (profile) {
+        return {
+          ...user,        // Data bawaan (email, id, dll)
+          ...profile,     // Data tambahan (organization_id, name, avatar)
+          name: profile.full_name
+        };
+      }
+
+      // Fallback jika profile belum dibuat
       return {
         ...user,
         name: user.email,

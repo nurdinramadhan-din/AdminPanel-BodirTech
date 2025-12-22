@@ -14,6 +14,7 @@ import {
 import { Link, useLocation } from 'react-router-dom';
 // ✅ 1. IMPORT HOOK LOGOUT DARI REFINE
 import { useLogout } from "@refinedev/core";
+import { Slider } from 'antd';
 
 // MENU MATCHING: Urutan disesuaikan persis dengan Sidebar lama Anda
 const MENU_ITEMS = [
@@ -21,6 +22,11 @@ const MENU_ITEMS = [
     name: 'Dashboard', 
     href: '/dashboard', 
     icon: LayoutDashboard 
+  },
+  { 
+  name: 'Kontrol Mesin', 
+  href: '/machines', 
+  icon: Slider // Atau icon 'Sliders' dari lucide-react
   },
   { 
     // FITUR BARU
