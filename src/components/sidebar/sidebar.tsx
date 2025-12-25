@@ -8,15 +8,16 @@ import {
   Factory,        // Ikon SPK
   ScanLine,       // Ikon Scanner
   LogOut,
-  Map,            // Ikon Live Floor (BARU)
-  Settings
+  Map,            // Ikon Live Floor
+  Settings,
+  UserCog,
+  Wallet          // ✅ 1. IMPORT IKON WALLET (DOMPET)
 } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
-// ✅ 1. IMPORT HOOK LOGOUT DARI REFINE
 import { useLogout } from "@refinedev/core";
 import { Slider } from 'antd';
 
-// MENU MATCHING: Urutan disesuaikan persis dengan Sidebar lama Anda
+// MENU MATCHING: Urutan disesuaikan
 const MENU_ITEMS = [
   { 
     name: 'Dashboard', 
@@ -24,16 +25,26 @@ const MENU_ITEMS = [
     icon: LayoutDashboard 
   },
   { 
-  name: 'Kontrol Mesin', 
-  href: '/machines', 
-  icon: Slider // Atau icon 'Sliders' dari lucide-react
+    name: 'Kontrol Mesin', 
+    href: '/machines', 
+    icon: Slider 
   },
   { 
-    // FITUR BARU
     name: 'Live Floor Map', 
     href: '/dashboard/floor-map', 
     icon: Map,
     isHighlight: true 
+  },
+  { 
+    name: 'Data Pegawai', 
+    href: '/employees', 
+    icon: UserCog 
+  },
+  // ✅ 2. MENU BARU: KASBON PEGAWAI (Ditempatkan setelah Data Pegawai)
+  { 
+    name: 'Kasbon Pegawai', 
+    href: '/loans', 
+    icon: Wallet 
   },
   { 
     name: 'Gudang Material', 
@@ -69,8 +80,6 @@ const MENU_ITEMS = [
 
 export const Sidebar = () => {
   const location = useLocation();
-  
-  // ✅ 2. INISIALISASI FUNGSI LOGOUT
   const { mutate: logout } = useLogout();
 
   return (
@@ -87,6 +96,7 @@ export const Sidebar = () => {
       <div className="flex-1 overflow-y-auto py-6 px-3 space-y-1">
         {MENU_ITEMS.map((item) => {
           const Icon = item.icon;
+          // Logic active state diperbaiki sedikit agar submenu juga menghighlight parent
           const isActive = location.pathname === item.href || (item.href !== '/dashboard' && location.pathname.startsWith(item.href));
           
           return (
@@ -126,7 +136,6 @@ export const Sidebar = () => {
           Settings
         </button>
         
-        {/* ✅ 3. TAMBAHKAN ONCLICK PADA TOMBOL LOGOUT */}
         <button 
           onClick={() => logout()}
           className="flex items-center px-3 py-2.5 text-sm font-medium text-red-400 hover:text-red-300 hover:bg-red-900/20 rounded-lg transition-colors w-full group"

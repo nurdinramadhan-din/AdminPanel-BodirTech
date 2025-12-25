@@ -7,6 +7,12 @@ import { ErrorComponent, useNotificationProvider, AuthPage } from "@refinedev/an
 import routerBindings, { CatchAllNavigate, DocumentTitleHandler, NavigateToResource, UnsavedChangesNotifier } from "@refinedev/react-router-v6";
 import { dataProvider } from "@refinedev/supabase";
 
+//menu list pegawai
+import { EmployeeList } from "./pages/employees/list";
+import { UserCog } from "lucide-react"
+import { EmployeeCreate } from "./pages/employees/create";
+import { EmployeeEdit } from "./pages/employees/edit";
+
 import { Activity, Layers, Users, TrendingUp } from 'lucide-react';
 import { StatsCard } from './components/dashboard/StatsCard';
 import { ProductionChart } from './components/dashboard/ProductionChart';
@@ -48,6 +54,11 @@ import { ProjectList } from "./pages/projects/list";
 import { ProjectCreate } from "./pages/projects/create";
 import { ProjectShow } from "./pages/projects/show";
 import { ProjectEdit } from "./pages/projects/edit";
+
+import { LoanList } from "./pages/loans/list";
+import { LoanCreate } from "./pages/loans/create"; 
+import { LoanEdit } from "./pages/loans/edit";
+import { WalletOutlined } from "@ant-design/icons"; // Atau icon lain yang cocok
 
 import { ScannerPage } from "./pages/scanner";
 
@@ -194,6 +205,28 @@ function App() {
                 meta: { label: "Kontrol Mesin" }, 
               },
 
+              {
+                name: "employees",
+                list: "/employees",
+                create: "/employees/create", 
+                edit: "/employees/edit/:id", 
+               meta: { 
+               label: "Data Pegawai",
+               icon: <UserCog size={20} />
+                },
+              },
+
+              {
+               name: "employee_loans",
+               list: "/loans",
+               create: "/loans/create", 
+               edit: "/loans/edit/:id", 
+               meta: {
+               label: "Kasbon Pegawai",
+               icon: <WalletOutlined />, // Icon Dompet
+                  },
+              },
+
               // GUDANG MATERIAL
               {
                 name: "materials",
@@ -270,12 +303,24 @@ function App() {
               >
                 {/* 1. Dashboard Index */}
                 <Route path="/dashboard" element={<DashboardPage />} />
+                <Route path="/employees">
+                <Route index element={<EmployeeList />} />
+                <Route path="create" element={<EmployeeCreate />} /> {/* ✅ TAMBAHKAN BARIS INI */}
+                <Route path="edit/:id" element={<EmployeeEdit />} /> {/* ✅ TAMBAHAN INI */}
+                </Route>
 
                 {/*HALAMAN MESIN */}
                 <Route path="/machines" element={<MachineControl />} />
                 
                 {/* Redirect root (/) ke /dashboard */}
                 <Route index element={<NavigateToResource resource="dashboard" />} />
+
+                {/* --- TAMBAHKAN ROUTE INI --- */}
+               <Route path="/loans">
+               <Route index element={<LoanList />} />
+               <Route path="create" element={<LoanCreate />} /> {/* <-- Route Create */}
+               <Route path="edit/:id" element={<LoanEdit />} /> {/* <-- Route Edit */}
+               </Route>
 
                 {/* 2. Materials */}
                 <Route path="/materials">
