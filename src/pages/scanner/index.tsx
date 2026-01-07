@@ -1,240 +1,155 @@
-import { IResourceComponentsProps } from "@refinedev/core";
-import { Card, Typography, Alert, Button, Spin, Tag, Row, Col, Upload, message, Modal } from "antd";
-import { Html5Qrcode } from "html5-qrcode";
-import { useEffect, useState, useRef } from "react";
-import { UploadOutlined, CameraOutlined, StopOutlined, ArrowRightOutlined, CheckCircleOutlined, ScissorOutlined } from "@ant-design/icons";
+import React, { useEffect, useState } from "react";
+import { Html5QrcodeScanner } from "html5-qrcode";
+import { Card, Button, message, Tag, Spin, Alert } from "antd";
 import { supabaseClient } from "../../utility";
+import { CheckCircleOutlined, ScissorOutlined, SkinOutlined } from "@ant-design/icons";
 
-const { Title } = Typography;
+export const ScannerPage = () => {
+    const [scanResult, setScanResult] = useState<string | null>(null);
+    const [bundleData, setBundleData] = useState<any>(null);
+    const [loading, setLoading] = useState(false);
 
-export const ScannerPage: React.FC<IResourceComponentsProps> = () => {
-  const [scanResult, setScanResult] = useState<string | null>(null);
-  const [bundleData, setBundleData] = useState<any>(null);
-  const [loading, setLoading] = useState(false);
-  const [processing, setProcessing] = useState(false);
-  const [isCameraRunning, setIsCameraRunning] = useState(false);
-  
-  const html5QrCodeRef = useRef<Html5Qrcode | null>(null);
+    useEffect(() => {
+        // Inisialisasi Scanner
+        const scanner = new Html5QrcodeScanner(
+            "reader",
+            { fps: 10, qrbox: { width: 250, height: 250 } },
+            false
+        );
 
-  useEffect(() => {
-    const html5QrCode = new Html5Qrcode("reader");
-    html5QrCodeRef.current = html5QrCode;
-    return () => {
-      if (html5QrCodeRef.current?.isScanning) {
-        html5QrCodeRef.current.stop().catch(console.error);
-      }
+        scanner.render(onScanSuccess, onScanFailure);
+
+        function onScanSuccess(decodedText: string) {
+            // Hentikan scan sementara setelah dapat hasil
+            scanner.clear();
+            setScanResult(decodedText);
+            fetchBundleData(decodedText); // <--- CARI KE DATABASE
+        }
+
+        function onScanFailure(_error: any) {
+            // Biarkan error scanning frame lewat (wajar)
+        }
+
+        return () => {
+            scanner.clear().catch(error => console.error("Failed to clear scanner", error));
+        };
+    }, []);
+
+    // LOGIKA CARI DATA BUNDLE
+    const fetchBundleData = async (bundleId: string) => {
+        setLoading(true);
+        try {
+            // Query ke Supabase berdasarkan UUID hasil scan
+            const { data, error } = await supabaseClient
+                .from('spk_bundles')
+                .select(`*, projects(title)`)
+                .eq('id', bundleId)
+                .single();
+
+            if (error || !data) {
+                message.error("QR Code Tidak Ditemukan di Database!");
+                setBundleData(null);
+            } else {
+                setBundleData(data);
+                message.success("Bundle Ditemukan: " + data.bundle_code);
+            }
+        } catch (err) {
+            message.error("Format QR Salah / Bukan Bundle Valid.");
+        } finally {
+            setLoading(false);
+        }
     };
-  }, []);
 
-  // --- LOGIKA UPDATE STATUS ---
-  const handleUpdateStatus = async (nextStage: string) => {
-    if(!bundleData) return;
-    setProcessing(true);
+    // LOGIKA UPDATE STATUS (Simulasi Operator)
+    const updateStatus = async (newStage: string) => {
+        if (!bundleData) return;
+        setLoading(true);
 
-    try {
-        // 1. Update Status di Tabel Utama
-        const { error: updateError } = await supabaseClient
+        const { error } = await supabaseClient
             .from('spk_bundles')
-            .update({ current_stage: nextStage, status: nextStage === 'DONE' ? 'DONE' : 'IN_PROGRESS' }) // Sekalian update status utama
+            .update({ 
+                current_stage: newStage,
+                status: newStage === 'DONE' ? 'DONE' : 'IN_PROGRESS' 
+            })
             .eq('id', bundleData.id);
 
-        if (updateError) throw updateError;
-
-        // 2. Catat di Buku Log (History)
-        const { error: logError } = await supabaseClient
-            .from('production_logs')
-            .insert({
-                bundle_id: bundleData.id,
-                project_id: bundleData.project_id,
-                previous_stage: bundleData.current_stage,
-                new_stage: nextStage,
-                notes: `Update via Mobile Scanner`
-                // organization_id & actor_id biasanya dihandle trigger/default value
-            });
-
-        if (logError) console.error("Gagal catat log:", logError); 
-
-        message.success(`Sukses! Status berubah jadi ${nextStage}`);
-        
-        // 3. Refresh Data Tampilan
-        setBundleData({ ...bundleData, current_stage: nextStage });
-
-    } catch (err: any) {
-        message.error("Gagal update: " + err.message);
-    } finally {
-        setProcessing(false);
-    }
-  };
-
-  // --- LOGIKA TOMBOL AKSI BERDASARKAN STATUS (SUDAH DIPERBAIKI) ---
-  const renderActionButtons = () => {
-    const status = bundleData.current_stage;
-
-    // ✅ KASUS 1: Jika Barang Baru (NEW) -> Masuk ke CUTTING
-    if (status === 'NEW') {
-        return (
-            <Button type="primary" size="large" block icon={<ScissorOutlined />} 
-                loading={processing} onClick={() => handleUpdateStatus('CUTTING')}>
-                Mulai Potong (CUTTING)
-            </Button>
-        );
-    }
-
-    // ✅ KASUS 2: Jika CUTTING -> Masuk ke SEWING
-    if (status === 'CUTTING') {
-        return (
-            <Button type="primary" size="large" block icon={<ArrowRightOutlined />} 
-                loading={processing} onClick={() => handleUpdateStatus('SEWING')}>
-                Mulai Jahit (SEWING)
-            </Button>
-        );
-    }
-
-    // ✅ KASUS 3: Jika SEWING -> Masuk ke FINISHING
-    if (status === 'SEWING') {
-        return (
-            <Button type="primary" size="large" block icon={<ArrowRightOutlined />} style={{backgroundColor: 'purple'}}
-                loading={processing} onClick={() => handleUpdateStatus('FINISHING')}>
-                Selesai Jahit (FINISHING)
-            </Button>
-        );
-    }
-
-    // ✅ KASUS 4: Jika FINISHING -> Masuk ke DONE
-    if (status === 'FINISHING') {
-        return (
-            <Button type="primary" size="large" block icon={<CheckCircleOutlined />} style={{backgroundColor: 'green'}}
-                loading={processing} onClick={() => handleUpdateStatus('DONE')}>
-                Selesai Packing (DONE)
-            </Button>
-        );
-    }
-
-    // ✅ KASUS 5: Jika Sudah DONE
-    if (status === 'DONE') {
-        return <Alert message="Barang Sudah Selesai!" type="success" showIcon />;
-    }
-
-    return <Alert message={`Status Tidak Dikenal: ${status}`} type="warning" />;
-  };
-  // ---------------------------------------------
-
-
-  const startCamera = () => {
-    if (!html5QrCodeRef.current) return;
-    html5QrCodeRef.current.start(
-      { facingMode: "environment" },
-      { fps: 10, qrbox: { width: 250, height: 250 } },
-      (decodedText) => handleScanSuccess(decodedText),
-      (_) => { 
-        // Ignore error
-      }
-    ).then(() => setIsCameraRunning(true)).catch(err => message.error("Gagal buka kamera: " + err));
-  };
-
-  const stopCamera = async () => {
-    if (html5QrCodeRef.current && isCameraRunning) {
-        await html5QrCodeRef.current.stop();
-        setIsCameraRunning(false);
-    }
-  };
-
-  const handleFileUpload = async (file: File) => {
-    if (!html5QrCodeRef.current) return;
-    setLoading(true);
-    try {
-        const result = await html5QrCodeRef.current.scanFile(file, true);
-        handleScanSuccess(result);
-    } catch (err) {
-        message.error("QR Code tidak terbaca.");
+        if (error) {
+            message.error("Gagal update: " + error.message);
+        } else {
+            message.success(`Status Berubah ke: ${newStage}`);
+            setBundleData(null); // Reset
+            setScanResult(null);
+            window.location.reload(); // Reload halaman untuk scan lagi (Simple)
+        }
         setLoading(false);
-    }
-    return false;
-  };
+    };
 
-  const handleScanSuccess = (decodedText: string) => {
-    if(html5QrCodeRef.current?.isScanning) {
-        html5QrCodeRef.current.stop().then(() => setIsCameraRunning(false));
-    }
-    setScanResult(decodedText);
-    fetchBundleInfo(decodedText);
-  };
+    return (
+        <div className="p-4 max-w-md mx-auto">
+            <h1 className="text-xl font-bold mb-4 text-center">📷 Mobile Scanner</h1>
 
-  const fetchBundleInfo = async (code: string) => {
-    setLoading(true);
-    // Kita ambil juga data project dan product untuk ditampilkan
-    const { data, error } = await supabaseClient
-        .from('spk_bundles')
-        .select('*, projects!inner(title, products(name))') 
-        .eq('bundle_code', code)
-        .maybeSingle();
-
-    setLoading(false);
-    if (error || !data) setBundleData(null);
-    else setBundleData(data);
-  };
-
-  const handleReset = () => {
-    setScanResult(null);
-    setBundleData(null);
-  };
-return (
-    <div style={{ maxWidth: '500px', margin: '0 auto', padding: '10px' }}>
-      <Title level={4} style={{ textAlign: 'center', marginBottom: 20 }}>🏭 Pabrik Scanner v1</Title>
-
-      {!scanResult && (
-        <Card>
-            <div id="reader" style={{ width: '100%', minHeight: '300px', background: '#000', borderRadius: 8, marginBottom: 16 }}></div>
-            <Row gutter={16}>
-                <Col span={12}>
-                    {!isCameraRunning ? 
-                        <Button type="primary" icon={<CameraOutlined />} block onClick={startCamera}>Scan Kamera</Button> : 
-                        <Button danger icon={<StopOutlined />} block onClick={stopCamera}>Stop</Button>
-                    }
-                </Col>
-                <Col span={12}>
-                      <Upload beforeUpload={handleFileUpload} showUploadList={false} accept="image/*">
-                         <Button icon={<UploadOutlined />} block>Upload File</Button>
-                      </Upload>
-                </Col>
-            </Row>
-        </Card>
-      )}
-
-      {scanResult && (
-        <Card style={{ textAlign: 'center', border: bundleData ? '2px solid green' : '2px solid red' }}>
-            {loading && <Spin size="large" />}
-            
-            {!loading && bundleData && (
-                <>
-                    <Tag color="blue" style={{fontSize: 14, marginBottom: 10}}>{bundleData.current_stage}</Tag>
-                    <Title level={3} style={{margin: 0}}>{bundleData.bundle_code}</Title>
-                    
-                    {/* --- BAGIAN INI TADI YANG ERROR/TERPOTONG --- */}
-                    <div style={{textAlign: 'left', background: '#f0f5ff', padding: 15, borderRadius: 8, margin: '15px 0'}}>
-                        <p>📦 <b>Order:</b> {bundleData.projects?.title}</p>
-                        <p>👕 <b>Barang:</b> {bundleData.projects?.products?.name}</p>
-                        <p>🔢 <b>Qty:</b> {bundleData.quantity} Pcs</p>
-                    </div>
-                    {/* --------------------------------------------- */}
-
-                    {/* TOMBOL AKSI DINAMIS */}
-                    <div style={{ marginBottom: 20 }}>
-                        {renderActionButtons()}
-                    </div>
-
-                    <Button block onClick={handleReset}>Scan Berikutnya</Button>
-                </>
+            {/* AREA KAMERA */}
+            {!scanResult && (
+                <div id="reader" className="bg-white p-4 rounded-lg shadow mb-4"></div>
             )}
 
-            {!loading && !bundleData && (
-                <>
-                      <Alert message="QR Code Tidak Ditemukan" type="error" />
-                      <div style={{marginTop: 10}}>Kode: {scanResult}</div>
-                      <Button onClick={handleReset} style={{marginTop: 20}}>Coba Lagi</Button>
-                </>
+            {/* LOADING */}
+            {loading && <div className="text-center p-10"><Spin size="large" /></div>}
+
+            {/* HASIL SCAN */}
+            {bundleData && !loading && (
+                <Card className="shadow-lg border-t-4 border-emerald-500 animate-in fade-in zoom-in">
+                    <div className="text-center">
+                        <Tag color="blue" className="text-lg px-3 py-1 mb-2">{bundleData.bundle_code}</Tag>
+                        <h2 className="text-lg font-bold">{bundleData.projects?.title}</h2>
+                        <p className="text-gray-500 mb-4">Isi: {bundleData.quantity} Pcs</p>
+                        
+                        <div className="bg-gray-100 p-2 rounded mb-4">
+                            Status Saat Ini: <br/>
+                            <span className="font-bold text-emerald-600">{bundleData.current_stage}</span>
+                        </div>
+
+                        <div className="space-y-3">
+                            <Button 
+                                block type="default" icon={<ScissorOutlined />} 
+                                onClick={() => updateStatus('CUTTING')}
+                                disabled={bundleData.current_stage === 'CUTTING'}
+                            >
+                                Mulai Cutting
+                            </Button>
+                            <Button 
+                                block type="primary" icon={<SkinOutlined />} 
+                                onClick={() => updateStatus('SEWING')}
+                                className="bg-orange-500 hover:bg-orange-600"
+                                disabled={bundleData.current_stage === 'SEWING'}
+                            >
+                                Mulai Sewing (Jahit)
+                            </Button>
+                            <Button 
+                                block type="primary" icon={<CheckCircleOutlined />} 
+                                onClick={() => updateStatus('DONE')}
+                                className="bg-green-600 hover:bg-green-700"
+                            >
+                                Selesai & QC OK
+                            </Button>
+                        </div>
+                        
+                        <Button type="link" danger className="mt-4" onClick={() => window.location.reload()}>
+                            Batal / Scan Ulang
+                        </Button>
+                    </div>
+                </Card>
             )}
-        </Card>
-      )}
-    </div>
-  );}
+
+            {/* TOMBOL RESET MANUAL */}
+            {scanResult && !bundleData && !loading && (
+                <div className="text-center">
+                    <Alert message="QR Code tidak dikenali sebagai Bundle." type="error" showIcon />
+                    <Button type="primary" className="mt-4" onClick={() => window.location.reload()}>
+                        Scan Ulang
+                    </Button>
+                </div>
+            )}
+        </div>
+    );
+};

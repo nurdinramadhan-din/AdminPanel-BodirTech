@@ -11,7 +11,8 @@ import {
   Map,            // Ikon Live Floor
   Settings,
   UserCog,
-  Wallet          // ✅ 1. IMPORT IKON WALLET (DOMPET)
+  Wallet,         // Ikon Kasbon
+  Banknote        // ✅ 1. TAMBAH IMPORT IKON INI UNTUK GAJI
 } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import { useLogout } from "@refinedev/core";
@@ -40,11 +41,18 @@ const MENU_ITEMS = [
     href: '/employees', 
     icon: UserCog 
   },
-  // ✅ 2. MENU BARU: KASBON PEGAWAI (Ditempatkan setelah Data Pegawai)
+  // ✅ 2. MENU KASBON (Sudah ada)
   { 
     name: 'Kasbon Pegawai', 
     href: '/loans', 
     icon: Wallet 
+  },
+  // ✅ 3. MENU BARU: GAJI & SALDO (Wajib ada!)
+  { 
+    name: 'Gaji & Saldo', 
+    href: '/payroll', 
+    icon: Banknote,
+    isHighlight: true // Opsional: Kasih highlight biar admin notice fitur baru
   },
   { 
     name: 'Gudang Material', 
@@ -96,7 +104,7 @@ export const Sidebar = () => {
       <div className="flex-1 overflow-y-auto py-6 px-3 space-y-1">
         {MENU_ITEMS.map((item) => {
           const Icon = item.icon;
-          // Logic active state diperbaiki sedikit agar submenu juga menghighlight parent
+          // Logic active state untuk menghighlight parent route juga
           const isActive = location.pathname === item.href || (item.href !== '/dashboard' && location.pathname.startsWith(item.href));
           
           return (
