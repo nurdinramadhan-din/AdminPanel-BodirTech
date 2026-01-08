@@ -59,7 +59,7 @@ export const MachineControl = () => {
         resource: "production_logs",
         values: {
             machine_id: machine.machine_id,
-            action_type: status, // Simpan sebagai action_type sesuai schema log
+            action_type: status, 
             organization_id: user?.organization_id, 
             actor_id: user?.id,
             notes: notes,

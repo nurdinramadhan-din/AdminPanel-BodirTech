@@ -23,6 +23,7 @@ import { ColorModeContextProvider } from "./contexts/color-mode";
 // 4. PAGES IMPORTS
 // --> Dashboard Import yang Baru
 import { DashboardPage } from "./pages/dashboard/index"; 
+import { LiveFloorMapPage } from "./pages/dashboard/floor-map";
 
 import { EmployeeList } from "./pages/employees/list";
 import { EmployeeCreate } from "./pages/employees/create";
@@ -44,8 +45,8 @@ import { BomList } from "./pages/bom/list";
 import { BomCreate } from "./pages/bom/create";
 import { BomEdit } from "./pages/bom/edit";
 
-import { ProjectList } from "./pages/projects/list";
-import { ProjectCreate } from "./pages/projects/create";
+import { ProjectList as ProjectList } from "./pages/projects/list";
+import { ProjectCreate as ProjectCreate } from "./pages/projects/create";
 import { ProjectShow } from "./pages/projects/show";
 import { ProjectEdit } from "./pages/projects/edit";
 
@@ -170,8 +171,11 @@ function App() {
                 }
               >
                 {/* ROUTING YANG LEBIH RAPI */}
-                <Route path="/dashboard" element={<DashboardPage />} /> {/* Mengarah ke file index.tsx yg baru */}
-                
+                <Route path="/dashboard">
+                 <Route index element={<DashboardPage />} />
+                 {/* ✅ TAMBAHKAN BARIS INI: */}
+                 <Route path="floor-map" element={<LiveFloorMapPage />} /> 
+                </Route>
                 <Route path="/employees">
                   <Route index element={<EmployeeList />} />
                   <Route path="create" element={<EmployeeCreate />} />

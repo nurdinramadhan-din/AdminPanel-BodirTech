@@ -1,65 +1,69 @@
 import React from "react";
 import { useList } from "@refinedev/core";
-import { AlertTriangle, CheckCircle, Info } from "lucide-react"; // Pastikan install lucide-react
+import { AlertTriangle, CheckCircle, Info, BrainCircuit } from "lucide-react";
 
 export const AIInsightWidget = () => {
-    // Fetch data AI yang belum dibaca (realtime)
     const { data } = useList({
         resource: "ai_insights",
         filters: [{ field: "is_read", operator: "eq", value: false }],
-        pagination: { pageSize: 3 },
+        pagination: { pageSize: 5 },
         sorters: [{ field: "created_at", order: "desc" }],
         liveMode: "auto", 
     });
 
     const insights = data?.data || [];
 
-    // Jika tidak ada masalah, tampilkan pesan aman (Opsional)
+    // Jika kosong, sembunyikan saja agar rapi di bawah
     if (insights.length === 0) return (
-        <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4 mb-6 flex items-center shadow-sm animate-in fade-in">
-             <div className="bg-emerald-100 p-2 rounded-full mr-4">
-                <CheckCircle className="text-emerald-600 w-6 h-6" />
-            </div>
-            <div>
-                <h4 className="font-bold text-emerald-800">Sistem Aman Terkendali</h4>
-                <p className="text-emerald-600 text-sm">AI tidak mendeteksi anomali produksi atau stok saat ini.</p>
-            </div>
+        <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-4 flex items-center justify-center text-slate-500 text-sm">
+            <CheckCircle className="w-4 h-4 mr-2" />
+            Sistem AI tidak mendeteksi anomali saat ini.
         </div>
     );
 
     return (
-        <div className="mb-6 space-y-3 animate-in slide-in-from-top-4 duration-500">
-            {insights.map((item: any) => (
-                <div 
-                    key={item.id} 
-                    className={`border-l-4 p-4 rounded-r-lg shadow-md flex items-start bg-white
-                        ${item.severity === 'HIGH' ? 'border-red-500' : 'border-yellow-500'}
-                    `}
-                >
-                    <div className="mr-4 mt-1">
-                        {item.severity === 'HIGH' ? (
-                             <div className="bg-red-100 p-2 rounded-full animate-pulse">
-                                <AlertTriangle className="text-red-600 w-6 h-6" />
-                             </div>
-                        ) : (
-                            <div className="bg-yellow-100 p-2 rounded-full">
-                                <Info className="text-yellow-700 w-6 h-6" />
-                            </div>
-                        )}
-                    </div>
-                    <div>
-                        <div className="flex items-center gap-2 mb-1">
-                            <span className={`text-xs font-bold px-2 py-0.5 rounded ${
-                                item.severity === 'HIGH' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-800'
-                            }`}>
-                                {item.insight_type || "AI ALERT"}
-                            </span>
-                            <span className="text-xs text-gray-400">Baru saja</span>
+        <div className="bg-slate-800 border border-slate-700 rounded-xl overflow-hidden shadow-lg animate-in fade-in slide-in-from-bottom-4">
+            <div className="bg-slate-900/50 px-4 py-3 border-b border-slate-700 flex items-center gap-2">
+                <BrainCircuit className="text-purple-400 w-5 h-5" />
+                <h3 className="text-slate-200 font-bold text-sm uppercase tracking-wider">Log Analisis AI</h3>
+            </div>
+            <div className="divide-y divide-slate-700">
+                {insights.map((item: any) => (
+                    <div 
+                        key={item.id} 
+                        className={`p-4 flex items-start gap-4 hover:bg-slate-700/30 transition-colors
+                            ${item.severity === 'HIGH' ? 'bg-red-900/10' : ''}
+                        `}
+                    >
+                        <div className="mt-1">
+                            {item.severity === 'HIGH' ? (
+                                <div className="bg-red-500/20 p-2 rounded-full">
+                                    <AlertTriangle className="text-red-400 w-5 h-5" />
+                                </div>
+                            ) : (
+                                <div className="bg-blue-500/20 p-2 rounded-full">
+                                    <Info className="text-blue-400 w-5 h-5" />
+                                </div>
+                            )}
                         </div>
-                        <p className="text-gray-800 font-medium">{item.message}</p>
+                        <div className="flex-1">
+                            <div className="flex justify-between items-start">
+                                <span className={`text-xs font-bold px-2 py-0.5 rounded border ${
+                                    item.severity === 'HIGH' 
+                                        ? 'bg-red-500/10 text-red-400 border-red-500/20' 
+                                        : 'bg-blue-500/10 text-blue-400 border-blue-500/20'
+                                }`}>
+                                    {item.insight_type || "SYSTEM ALERT"}
+                                </span>
+                                <span className="text-xs text-slate-500">
+                                    {new Date(item.created_at).toLocaleTimeString('id-ID', {hour: '2-digit', minute:'2-digit'})}
+                                </span>
+                            </div>
+                            <p className="text-slate-300 text-sm mt-1 leading-relaxed">{item.message}</p>
+                        </div>
                     </div>
-                </div>
-            ))}
+                ))}
+            </div>
         </div>
     );
 };

@@ -1,112 +1,136 @@
-// src/pages/payroll/list.tsx
-import React from "react";
-import { useTable } from "@refinedev/core";
+import React, { useState } from "react";
+import { useTable } from "@refinedev/antd";
+import { Table, Tag, Space, Button, Modal, message, ConfigProvider, theme } from "antd";
+import { DollarOutlined, DownloadOutlined, ExclamationCircleOutlined } from "@ant-design/icons";
+import { supabaseClient } from "../../utility";
 
 export const PayrollList = () => {
-    // Mengambil data dari VIEW yang sudah kita buat di database
-    const { tableQueryResult } = useTable({
-        resource: "view_employee_payroll",
-        pagination: { pageSize: 10 },
-        sorters: { initial: [{ field: "current_balance", order: "desc" }] },
+    const { darkAlgorithm } = theme;
+    const [isWithdrawing, setIsWithdrawing] = useState(false);
+
+    const { tableProps, tableQueryResult } = useTable({
+        resource: "view_employee_payroll", 
+        pagination: { pageSize: 20 },
+        liveMode: "auto"
     });
 
-    const { data, isLoading } = tableQueryResult;
+    // FITUR EKSPOR CSV
+    const handleExport = () => {
+        const data = tableQueryResult.data?.data || [];
+        if (data.length === 0) return message.warning("Tidak ada data untuk diekspor");
 
-    // Formatter untuk Rupiah
-    const formatRupiah = (amount: number) => {
-        return new Intl.NumberFormat("id-ID", {
-            style: "currency",
-            currency: "IDR",
-            minimumFractionDigits: 0,
-        }).format(amount);
+        const csvHeader = ["Nama", "Role", "Saldo Saat Ini", "Update Terakhir"];
+        const csvRows = data.map((row: any) => [
+            `"${row.full_name}"`,
+            row.role,
+            row.current_balance,
+            row.last_balance_update
+        ]);
+
+        const csvContent = [csvHeader, ...csvRows].map(e => e.join(",")).join("\n");
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = `Laporan_Gaji_${new Date().toISOString().split('T')[0]}.csv`;
+        link.click();
     };
 
-    if (isLoading) return <div className="p-6 text-center">Loading Data Gaji...</div>;
+    // FITUR CAIRKAN (WITHDRAW)
+    const handleWithdraw = (record: any) => {
+        if (record.current_balance <= 0) return message.error("Saldo kosong, tidak bisa dicairkan.");
+
+        Modal.confirm({
+            title: `Cairkan Gaji ${record.full_name}?`,
+            icon: <ExclamationCircleOutlined />,
+            content: `Total yang akan dibayarkan: Rp ${record.current_balance.toLocaleString('id-ID')}`,
+            okText: 'Bayar & Nol-kan Saldo',
+            okType: 'danger',
+            cancelText: 'Batal',
+            onOk: async () => {
+                setIsWithdrawing(true);
+                try {
+                    // 1. Catat Transaksi Pengeluaran
+                    const { error: transError } = await supabaseClient.from('wallet_transactions').insert({
+                        wallet_id: record.user_id,
+                        amount: -record.current_balance, // Negatif karena uang keluar
+                        transaction_type: 'PAYOUT',
+                        description: 'Pencairan Gaji Mingguan (Admin)'
+                    });
+                    if (transError) throw transError;
+
+                    // 2. Update Saldo Jadi 0
+                    const { error: walletError } = await supabaseClient.from('wallets')
+                        .update({ balance: 0, updated_at: new Date() })
+                        .eq('user_id', record.user_id);
+                    if (walletError) throw walletError;
+
+                    message.success("Pencairan sukses! Saldo pegawai sudah 0.");
+                } catch (err: any) {
+                    message.error("Gagal mencairkan: " + err.message);
+                } finally {
+                    setIsWithdrawing(false);
+                }
+            }
+        });
+    };
 
     return (
-        <div className="p-6 bg-gray-50 min-h-screen">
-            <div className="flex justify-between items-center mb-6">
-                <h1 className="text-2xl font-bold text-gray-800">💰 Manajemen Gaji & Saldo</h1>
-                <button className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded shadow">
-                    Export Laporan
-                </button>
-            </div>
+        <ConfigProvider theme={{ algorithm: darkAlgorithm }}>
+            <div className="bg-slate-900 min-h-screen p-6">
+                <div className="flex justify-between items-center mb-6">
+                    <div>
+                        <h1 className="text-2xl font-bold text-white">💰 Manajemen Gaji & Saldo</h1>
+                        <p className="text-slate-400">Monitoring saldo upah borongan pegawai real-time.</p>
+                    </div>
+                    <Button icon={<DownloadOutlined />} onClick={handleExport}>
+                        Ekspor CSV
+                    </Button>
+                </div>
 
-            <div className="bg-white shadow-md rounded-lg overflow-hidden">
-                <table className="min-w-full leading-normal">
-                    <thead>
-                        <tr>
-                            <th className="px-5 py-3 border-b-2 border-gray-200 bg-gray-100 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                                Nama Pegawai
-                            </th>
-                            <th className="px-5 py-3 border-b-2 border-gray-200 bg-gray-100 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                                Posisi
-                            </th>
-                            <th className="px-5 py-3 border-b-2 border-gray-200 bg-gray-100 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                                Saldo Tersedia
-                            </th>
-                            <th className="px-5 py-3 border-b-2 border-gray-200 bg-gray-100 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                                Update Terakhir
-                            </th>
-                            <th className="px-5 py-3 border-b-2 border-gray-200 bg-gray-100 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                                Aksi
-                            </th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {data?.data.map((item: any) => (
-                            <tr key={item.user_id} className="hover:bg-gray-50">
-                                <td className="px-5 py-5 border-b border-gray-200 bg-white text-sm">
-                                    <div className="flex items-center">
-                                        <div className="ml-3">
-                                            <p className="text-gray-900 whitespace-no-wrap font-medium">
-                                                {item.full_name || "Tanpa Nama"}
-                                            </p>
-                                        </div>
-                                    </div>
-                                </td>
-                                <td className="px-5 py-5 border-b border-gray-200 bg-white text-sm">
-                                    <span
-                                        className={`relative inline-block px-3 py-1 font-semibold text-green-900 leading-tight`}
-                                    >
-                                        <span
-                                            aria-hidden
-                                            className="absolute inset-0 bg-green-200 opacity-50 rounded-full"
-                                        ></span>
-                                        <span className="relative text-xs uppercase">{item.role}</span>
-                                    </span>
-                                </td>
-                                <td className="px-5 py-5 border-b border-gray-200 bg-white text-sm">
-                                    <p className={`font-bold whitespace-no-wrap ${item.current_balance > 0 ? 'text-blue-600' : 'text-gray-400'}`}>
-                                        {formatRupiah(item.current_balance || 0)}
-                                    </p>
-                                </td>
-                                <td className="px-5 py-5 border-b border-gray-200 bg-white text-sm">
-                                    <p className="text-gray-900 whitespace-no-wrap">
-                                        {new Date(item.last_balance_update).toLocaleDateString("id-ID", {
-                                            day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
-                                        })}
-                                    </p>
-                                </td>
-                                <td className="px-5 py-5 border-b border-gray-200 bg-white text-sm text-center">
-                                    <button 
-                                        className="text-blue-600 hover:text-blue-900 mx-2 font-medium"
-                                        onClick={() => alert(`Fitur Withdraw untuk ${item.full_name} akan segera aktif!`)}
-                                    >
-                                        Cairkan
-                                    </button>
-                                </td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-                {/* Pagination Sederhana */}
-                <div className="px-5 py-5 bg-white border-t flex flex-col xs:flex-row items-center xs:justify-between">
-                     <span className="text-xs xs:text-sm text-gray-900">
-                        Menampilkan {data?.data.length} pegawai teratas
-                    </span>
+                <div className="bg-slate-800 rounded-lg shadow border border-slate-700 overflow-hidden">
+                    <Table {...tableProps} rowKey="user_id" pagination={{ position: ['bottomCenter'], className: "text-white" }}>
+                        <Table.Column 
+                            dataIndex="full_name" 
+                            title="Nama Pegawai" 
+                            render={(t) => <span className="font-bold text-slate-200">{t}</span>}
+                        />
+                        <Table.Column 
+                            dataIndex="role" 
+                            title="Posisi"
+                            render={(v) => <Tag color="blue">{v}</Tag>}
+                        />
+                        <Table.Column 
+                            dataIndex="current_balance" 
+                            title="Saldo Tersedia"
+                            render={(v) => (
+                                <span className={`font-mono text-lg ${v > 0 ? 'text-emerald-400' : 'text-slate-500'}`}>
+                                    {new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR" }).format(v || 0)}
+                                </span>
+                            )}
+                        />
+                        <Table.Column 
+                            dataIndex="last_balance_update" 
+                            title="Update Terakhir"
+                            render={(v) => <span className="text-slate-400">{v ? new Date(v).toLocaleString() : '-'}</span>}
+                        />
+                        <Table.Column
+                            title="Aksi"
+                            render={(_, record: any) => (
+                                <Button 
+                                    size="small" 
+                                    type="primary" 
+                                    danger 
+                                    icon={<DollarOutlined />}
+                                    onClick={() => handleWithdraw(record)}
+                                    disabled={record.current_balance <= 0 || isWithdrawing}
+                                >
+                                    Cairkan
+                                </Button>
+                            )}
+                        />
+                    </Table>
                 </div>
             </div>
-        </div>
+        </ConfigProvider>
     );
 };
