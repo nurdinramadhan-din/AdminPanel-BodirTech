@@ -1,150 +1,225 @@
-import React, { useEffect, useState, useRef } from "react";
-import { Html5QrcodeScanner, Html5Qrcode } from "html5-qrcode";
-import { Card, Button, message, Tag, Spin, Alert, Upload, Tabs } from "antd";
-import { supabaseClient } from "../../utility";
-import { CheckCircleOutlined, ScissorOutlined, SkinOutlined, UploadOutlined, CameraOutlined } from "@ant-design/icons";
+import React, { useState, useRef } from "react";
+import { useGetIdentity, useUpdate, useList } from "@refinedev/core";
+import { 
+    Card, Input, Button, message, Tag, Typography, 
+    ConfigProvider, theme, Modal 
+} from "antd";
+import { 
+    ScanLine, CheckCircle, XCircle, Search, 
+    Zap, Wallet, User 
+} from "lucide-react";
+
+const { Title, Text } = Typography;
 
 export const ScannerPage = () => {
-    const [scanResult, setScanResult] = useState<string | null>(null);
-    const [bundleData, setBundleData] = useState<any>(null);
-    const [loading, setLoading] = useState(false);
-    const [activeTab, setActiveTab] = useState("camera");
+    const { darkAlgorithm } = theme;
+    // 1. Identitas Penjahit (User Login)
+    const { data: user } = useGetIdentity<{ id: string; name?: string }>();
+    
+    // State
+    const [scanInput, setScanInput] = useState("");
+    const [scannedBundle, setScannedBundle] = useState<any>(null);
+    const inputRef = useRef<any>(null);
 
-    // --- MODE KAMERA ---
-    useEffect(() => {
-        let scanner: Html5QrcodeScanner | null = null;
+    // 2. Hook Update Status
+    const { mutate: updateStatus, isLoading: isUpdating } = useUpdate();
 
-        if (activeTab === "camera" && !scanResult) {
-            scanner = new Html5QrcodeScanner(
-                "reader",
-                { fps: 10, qrbox: { width: 250, height: 250 } },
-                false
-            );
-            scanner.render(onScanSuccess, (err) => console.log(err));
+    // 3. Hook Cari Data Bundle
+    const { refetch: searchBundle, isFetching: isSearching } = useList({
+        resource: "spk_bundles",
+        filters: [
+            // 🔥 PERBAIKAN UTAMA: .trim() untuk membuang spasi otomatis
+            { field: "id", operator: "eq", value: scanInput.trim() }, 
+        ],
+        meta: { select: "*, projects(*, products(*))" },
+        queryOptions: { enabled: false } 
+    });
+
+    // FUNGSI 1: Handle Scan
+    const handleScan = async () => {
+        // 🔥 VALIDASI: Pastikan input tidak kosong setelah dispasi dibuang
+        const cleanInput = scanInput.trim();
+        
+        if (!cleanInput) {
+            message.warning("Input kosong!");
+            return;
         }
-
-        return () => {
-            if (scanner) {
-                scanner.clear().catch(console.error);
-            }
-        };
-    }, [activeTab, scanResult]);
-
-    function onScanSuccess(decodedText: string) {
-        setScanResult(decodedText);
-        fetchBundleData(decodedText);
-    }
-
-    // --- MODE UPLOAD FILE ---
-    const handleFileUpload = async (file: File) => {
-        const html5QrCode = new Html5Qrcode("reader-file-hidden");
+        
         try {
-            const decodedText = await html5QrCode.scanFile(file, true);
-            setScanResult(decodedText);
-            fetchBundleData(decodedText);
-        } catch (err) {
-            message.error("QR Code tidak terbaca pada gambar ini.");
-        }
-        return false; // Prevent auto upload
-    };
+            const { data } = await searchBundle();
+            const found = data?.data?.[0];
 
-    // --- LOGIKA DATA ---
-    const fetchBundleData = async (bundleId: string) => {
-        setLoading(true);
-        try {
-            const { data, error } = await supabaseClient
-                .from('spk_bundles')
-                .select(`*, projects(title)`)
-                .eq('id', bundleId)
-                .single();
-
-            if (error || !data) {
-                message.error("QR Code Tidak Ditemukan!");
-                setBundleData(null);
+            if (found) {
+                setScannedBundle(found);
+                message.success("Bundle ditemukan!");
             } else {
-                setBundleData(data);
-                message.success("Bundle Ditemukan!");
+                message.error("QR Code tidak valid atau tidak ditemukan.");
+                setScannedBundle(null);
             }
-        } catch (err) {
-            message.error("Format QR Salah.");
-        } finally {
-            setLoading(false);
+        } catch (error) {
+            message.error("Gagal mengambil data. Cek koneksi.");
         }
     };
 
-    const updateStatus = async (newStage: string) => {
-        if (!bundleData) return;
-        setLoading(true);
-        const { error } = await supabaseClient
-            .from('spk_bundles')
-            .update({ 
-                current_stage: newStage,
-                status: newStage === 'DONE' ? 'DONE' : 'IN_PROGRESS' 
-            })
-            .eq('id', bundleData.id);
-
-        if (error) message.error(error.message);
-        else {
-            message.success(`Status Berubah: ${newStage}`);
-            setBundleData(null);
-            setScanResult(null);
+    // FUNGSI 2: Eksekusi Update
+    const handleProcess = (newStatus: string) => {
+        if (!scannedBundle || !user) {
+            message.error("Data tidak lengkap (Login User / Bundle hilang).");
+            return;
         }
-        setLoading(false);
+
+        updateStatus({
+            resource: "spk_bundles",
+            id: scannedBundle.id,
+            values: {
+                status: newStatus,
+                updated_at: new Date(),
+                updated_by: user.id // Kirim ID User Login
+            },
+            successNotification: (_data, _values) => {
+                return {
+                    message: newStatus === 'DONE' ? "Gaji Cair! 💸" : "Mulai Jahit",
+                    description: newStatus === 'DONE' 
+                        ? `Saldo dompet Anda bertambah otomatis.` 
+                        : `Status bundle berubah menjadi ${newStatus}`,
+                    type: "success",
+                };
+            }
+        }, {
+            onSuccess: () => {
+                setScannedBundle(null);
+                setScanInput("");
+                // Fokus balik ke input agar siap scan lagi
+                setTimeout(() => inputRef.current?.focus(), 100); 
+            },
+            onError: (error) => {
+                message.error("Gagal update status: " + error?.message);
+            }
+        });
     };
+
+    // Hitung Estimasi Gaji
+    const wagePerPcs = scannedBundle?.projects?.products?.wage_per_piece || 0;
+    const totalWage = wagePerPcs * (scannedBundle?.quantity || 0);
 
     return (
-        <div className="p-4 max-w-md mx-auto min-h-screen bg-slate-50">
-            <h1 className="text-xl font-bold mb-4 text-center text-slate-800">📷 Mobile Scanner</h1>
-
-            {!scanResult && (
-                <Tabs 
-                    activeKey={activeTab} 
-                    onChange={setActiveTab}
-                    centered
-                    items={[
-                        {
-                            key: 'camera',
-                            label: <span><CameraOutlined /> Kamera Live</span>,
-                            children: <div id="reader" className="bg-white rounded-lg shadow overflow-hidden"></div>
-                        },
-                        {
-                            key: 'upload',
-                            label: <span><UploadOutlined /> Upload Gambar</span>,
-                            children: (
-                                <div className="p-8 bg-white rounded-lg shadow text-center border-2 border-dashed border-slate-300">
-                                    <Upload beforeUpload={handleFileUpload} showUploadList={false}>
-                                        <Button icon={<UploadOutlined />} size="large">Pilih Foto QR</Button>
-                                    </Upload>
-                                    <p className="mt-2 text-slate-400 text-sm">Upload foto label karung jika kamera bermasalah.</p>
-                                    <div id="reader-file-hidden" style={{display:'none'}}></div>
-                                </div>
-                            )
-                        }
-                    ]}
-                />
-            )}
-
-            {/* HASIL SCAN (Sama seperti sebelumnya) */}
-            {loading && <div className="text-center p-10"><Spin size="large" /></div>}
-
-            {bundleData && !loading && (
-                <Card className="shadow-lg border-t-4 border-emerald-500 mt-4">
-                    <div className="text-center">
-                        <Tag color="blue" className="text-lg px-3 py-1 mb-2">{bundleData.bundle_code}</Tag>
-                        <h2 className="text-lg font-bold">{bundleData.projects?.title}</h2>
-                        <p className="text-gray-500 mb-4">Isi: {bundleData.quantity} Pcs</p>
-                        <div className="bg-gray-100 p-2 rounded mb-4 font-bold text-emerald-600">
-                            {bundleData.current_stage}
+        <ConfigProvider theme={{ algorithm: darkAlgorithm }}>
+            <div className="bg-slate-950 min-h-screen p-4 flex flex-col items-center justify-center font-mono text-slate-200">
+                
+                {/* HEADER IDENTITAS */}
+                <div className="w-full max-w-md mb-6 flex items-center justify-between bg-slate-900 p-4 rounded-xl border border-slate-800">
+                    <div className="flex items-center gap-3">
+                        <div className="p-2 bg-emerald-500/20 rounded-full">
+                            <User className="text-emerald-400" size={20} />
                         </div>
-                        <div className="space-y-3">
-                            <Button block onClick={() => updateStatus('CUTTING')} disabled={bundleData.current_stage === 'CUTTING'}>Mulai Cutting</Button>
-                            <Button block type="primary" className="bg-orange-500" onClick={() => updateStatus('SEWING')} disabled={bundleData.current_stage === 'SEWING'}>Mulai Sewing</Button>
-                            <Button block type="primary" className="bg-green-600" onClick={() => updateStatus('DONE')}>Selesai & QC OK</Button>
+                        <div>
+                            <p className="text-xs text-slate-500 uppercase">Operator Aktif</p>
+                            <p className="font-bold text-white text-sm">{user?.name || "Loading..."}</p>
                         </div>
-                        <Button type="link" danger className="mt-4" onClick={() => { setScanResult(null); setBundleData(null); }}>Scan Lagi</Button>
                     </div>
+                    <div className="flex items-center gap-2">
+                        <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></div>
+                        <span className="text-xs text-emerald-500 font-bold">ONLINE</span>
+                    </div>
+                </div>
+
+                {/* KOTAK SCAN */}
+                <Card className="w-full max-w-md bg-slate-900 border-slate-700 shadow-2xl">
+                    <div className="text-center mb-6">
+                        <ScanLine className="mx-auto text-blue-500 mb-2" size={48} />
+                        <Title level={4} style={{ color: 'white', margin: 0 }}>Mobile Scanner</Title>
+                        <Text className="text-slate-400 text-xs">Arahkan barcode scanner atau ketik ID</Text>
+                    </div>
+
+                    <div className="flex gap-2 mb-6">
+                        <Input 
+                            ref={inputRef}
+                            size="large" 
+                            placeholder="Klik disini & Scan QR..." 
+                            value={scanInput}
+                            onChange={(e) => setScanInput(e.target.value)}
+                            onPressEnter={handleScan}
+                            prefix={<Search size={16} className="text-slate-500" />}
+                            autoFocus
+                            className="bg-slate-800 border-slate-600 text-white text-lg h-12"
+                        />
+                        <Button 
+                            type="primary" 
+                            size="large" 
+                            onClick={handleScan}
+                            loading={isSearching}
+                            className="bg-blue-600 h-12 w-12 flex items-center justify-center p-0"
+                        >
+                            <Search size={20} />
+                        </Button>
+                    </div>
+
+                    {/* HASIL SCAN */}
+                    {scannedBundle ? (
+                        <div className="animate-in fade-in slide-in-from-bottom-4">
+                            <div className="bg-slate-800 p-4 rounded-lg border border-slate-600 mb-4 relative overflow-hidden">
+                                <div className="absolute top-0 right-0 p-2 opacity-20 pointer-events-none">
+                                    <h1 className="text-6xl font-bold text-white m-0">{scannedBundle.status}</h1>
+                                </div>
+
+                                <div className="relative z-10">
+                                    <Tag color="blue" className="mb-2">{scannedBundle.bundle_code}</Tag>
+                                    <h3 className="text-xl font-bold text-white mb-1">
+                                        {scannedBundle.projects?.title}
+                                    </h3>
+                                    <p className="text-slate-400 text-sm mb-3">
+                                        {scannedBundle.projects?.products?.name}
+                                    </p>
+                                    
+                                    <div className="grid grid-cols-2 gap-4 mt-4">
+                                        <div className="bg-slate-700/50 p-2 rounded">
+                                            <p className="text-xs text-slate-500">Isi Karung</p>
+                                            <p className="text-lg font-bold text-white">{scannedBundle.quantity} Pcs</p>
+                                        </div>
+                                        <div className="bg-emerald-900/20 p-2 rounded border border-emerald-500/30">
+                                            <p className="text-xs text-emerald-400 flex items-center gap-1">
+                                                <Wallet size={12} /> Potensi Upah
+                                            </p>
+                                            <p className="text-lg font-bold text-emerald-400">
+                                                Rp {totalWage.toLocaleString('id-ID')}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3">
+                                <Button 
+                                    size="large"
+                                    icon={<Zap size={18} />}
+                                    onClick={() => handleProcess('IN_PROGRESS')}
+                                    disabled={scannedBundle.status === 'IN_PROGRESS' || scannedBundle.status === 'DONE'}
+                                    className="bg-amber-600 border-none text-white font-bold h-12 hover:bg-amber-500 disabled:bg-slate-800 disabled:text-slate-600"
+                                >
+                                    Mulai Jahit
+                                </Button>
+                                
+                                <Button 
+                                    size="large"
+                                    type="primary"
+                                    icon={<CheckCircle size={18} />}
+                                    onClick={() => handleProcess('DONE')}
+                                    disabled={scannedBundle.status === 'DONE'}
+                                    loading={isUpdating}
+                                    className="bg-emerald-600 border-none font-bold h-12 hover:bg-emerald-500 disabled:bg-slate-800 disabled:text-slate-600"
+                                >
+                                    Selesai (QC OK)
+                                </Button>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="text-center py-8 opacity-30">
+                            <ScanLine size={64} className="mx-auto mb-4" />
+                            <p>Menunggu Scan QR Code...</p>
+                        </div>
+                    )}
                 </Card>
-            )}
-        </div>
+            </div>
+        </ConfigProvider>
     );
 };

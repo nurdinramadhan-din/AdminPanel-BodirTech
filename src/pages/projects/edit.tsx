@@ -1,121 +1,154 @@
 import React, { useState, useEffect } from "react";
-import { IResourceComponentsProps } from "@refinedev/core";
-import { Edit, useForm } from "@refinedev/antd";
+import { IResourceComponentsProps, useList, useNavigation } from "@refinedev/core";
+import { Edit, useForm, useSelect } from "@refinedev/antd";
 import { 
-    Form, Input, InputNumber, Row, Col, Divider, 
-    Upload, Button, message, ConfigProvider, theme, Card 
+    Form, Input, Select, InputNumber, Row, Col, 
+    Card, DatePicker, Alert, Progress, Tag, ConfigProvider, theme 
 } from "antd";
-import { 
-    UploadOutlined, ScissorOutlined, BgColorsOutlined, 
-    ColumnHeightOutlined, SaveOutlined
-} from "@ant-design/icons";
-import { supabaseClient } from "../../utility";
+import dayjs from "dayjs";
+import { LockOutlined, UnlockOutlined, InfoCircleOutlined } from "@ant-design/icons";
 
 export const ProjectEdit: React.FC<IResourceComponentsProps> = () => {
     const { darkAlgorithm } = theme;
+    const { list } = useNavigation();
+    
+    // 1. Ambil Data Project
     const { formProps, saveButtonProps, queryResult, form } = useForm();
-    const [isUploading, setIsUploading] = useState(false);
-    const [imageUrl, setImageUrl] = useState<string>("");
+    const projectData = queryResult?.data?.data;
 
-    // Load gambar lama saat data database masuk
-    const productData = queryResult?.data?.data;
-    useEffect(() => {
-        if (productData?.image_url) {
-            setImageUrl(productData.image_url);
-        }
-    }, [productData]);
+    // 2. Cek Progress Produksi (Untuk Fitur Lock)
+    const { data: bundleData, isLoading: loadingBundles } = useList({
+        resource: "spk_bundles",
+        filters: [{ field: "project_id", operator: "eq", value: projectData?.id }],
+        pagination: { mode: "off" },
+        queryOptions: { enabled: !!projectData?.id } // Hanya jalan jika project id ada
+    });
 
-    const handleUpload = async (options: any) => {
-        const { file, onSuccess, onError } = options;
-        const fileName = `design-${Date.now()}-${file.name.replace(/\s/g, '-')}`;
-        setIsUploading(true);
-        try {
-            const { data, error } = await supabaseClient.storage.from('products').upload(fileName, file);
-            if (error) throw error;
-            const { data: urlData } = supabaseClient.storage.from('products').getPublicUrl(fileName);
-            setImageUrl(urlData.publicUrl);
-            form.setFieldValue("image_url", urlData.publicUrl);
-            onSuccess("Ok");
-            message.success("Foto diperbarui!");
-        } catch (err: any) {
-            onError({ err });
-            message.error("Gagal upload: " + err.message);
-        } finally {
-            setIsUploading(false);
-        }
-    };
+    const bundles = bundleData?.data || [];
+    const totalBundles = bundles.length;
+    const finishedBundles = bundles.filter((b: any) => b.status === 'DONE').length;
+    
+    // Hitung Persentase
+    const progressPercent = totalBundles > 0 
+        ? Math.round((finishedBundles / totalBundles) * 100) 
+        : 0;
+
+    // LOGIKA PENGUNCIAN (SECURITY)
+    // Kunci total jika: Status DONE atau Progress 100%
+    const isLocked = projectData?.status === 'DONE' || (totalBundles > 0 && progressPercent === 100);
+    
+    // Kunci parsial (Qty tidak boleh ubah) jika: Produksi sudah dimulai (ada yang in_progress/done)
+    const isProductionStarted = bundles.some((b: any) => b.status !== 'NEW');
 
     return (
         <ConfigProvider theme={{ algorithm: darkAlgorithm }}>
             <div className="bg-slate-900 min-h-screen p-6 flex justify-center text-slate-100">
-                <div className="w-full max-w-5xl">
+                <div className="w-full max-w-4xl">
                     <Edit 
-                        saveButtonProps={saveButtonProps} 
-                        title={<span className="text-xl font-bold text-white">✏️ Edit Spesifikasi Desain</span>}
-                        wrapperProps={{ className: "bg-slate-800 border border-slate-700 rounded-xl shadow-2xl" }}
-                        footerButtons={
-                            <Button 
-                                type="primary" 
-                                icon={<SaveOutlined />}
-                                onClick={() => form.submit()}
-                                size="large"
-                                className="bg-emerald-600 hover:bg-emerald-500 font-bold border-none"
-                            >
-                                Simpan Perubahan
-                            </Button>
+                        saveButtonProps={isLocked ? { disabled: true, style: { display: 'none' } } : saveButtonProps} 
+                        title={
+                            <div className="flex items-center gap-3">
+                                <span className="text-xl font-bold text-white">
+                                    {isLocked ? "🔒 SPK Terkunci (Selesai)" : "✏️ Edit SPK Produksi"}
+                                </span>
+                                {isLocked && <Tag color="red">READ ONLY</Tag>}
+                            </div>
                         }
+                        wrapperProps={{ className: "bg-slate-800 border border-slate-700 rounded-xl" }}
                     >
+                        {/* ALERT STATUS */}
+                        {isLocked ? (
+                            <Alert 
+                                message="Produksi Selesai" 
+                                description="Data tidak dapat diubah karena seluruh bundle telah selesai diproduksi (100%). Hubungi Super Admin jika ada kesalahan fatal." 
+                                type="error" 
+                                showIcon 
+                                icon={<LockOutlined />}
+                                className="mb-6 bg-red-900/20 border-red-500/30 text-red-200"
+                            />
+                        ) : isProductionStarted ? (
+                            <Alert 
+                                message="Produksi Sedang Berjalan" 
+                                description="Jumlah Qty & Desain dikunci demi keamanan data QR Code. Anda hanya bisa mengubah Judul, Deadline, & Status." 
+                                type="warning" 
+                                showIcon 
+                                className="mb-6 bg-amber-900/20 border-amber-500/30 text-amber-200"
+                            />
+                        ) : null}
+
                         <Form {...formProps} layout="vertical">
-                            <Row gutter={32}>
-                                <Col xs={24} lg={10}>
-                                    <Card className="bg-slate-900 border-slate-700 mb-6 text-center">
-                                        <div className="mb-4 flex justify-center items-center h-64 bg-slate-800 rounded-lg border-2 border-dashed border-slate-600 overflow-hidden">
-                                            {imageUrl ? (
-                                                <img src={imageUrl} alt="Preview" className="h-full w-full object-contain" />
-                                            ) : <span className="text-slate-500">Tidak ada foto</span>}
-                                        </div>
-                                        <Form.Item name="image_url" hidden><Input /></Form.Item>
-                                        <Upload customRequest={handleUpload} showUploadList={false}>
-                                            <Button icon={<UploadOutlined />} loading={isUploading} className="w-full">
-                                                Ganti Foto
-                                            </Button>
-                                        </Upload>
-                                    </Card>
-                                    <Form.Item label={<span className="text-slate-300">Nama Desain</span>} name="name" rules={[{ required: true }]}>
-                                        <Input size="large" />
-                                    </Form.Item>
-                                    <Form.Item label={<span className="text-slate-300">SKU</span>} name="sku"><Input /></Form.Item>
-                                </Col>
-
-                                <Col xs={24} lg={14}>
-                                    <Divider orientation="left" className="border-slate-600 text-emerald-400">
-                                        <ScissorOutlined /> Update Teknis
-                                    </Divider>
-                                    <div className="bg-slate-900/50 p-6 rounded-xl border border-slate-700 mb-6">
-                                        <Row gutter={16}>
-                                            <Col span={12}>
-                                                <Form.Item label={<span className="text-slate-400">Stitch Count</span>} name="stitch_count" rules={[{ required: true }]}>
-                                                    <InputNumber style={{ width: "100%" }} formatter={v => `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')} parser={v => v!.replace(/\$\s?|(,*)/g, '')} />
-                                                </Form.Item>
-                                            </Col>
-                                            <Col span={12}>
-                                                <Form.Item label={<span className="text-slate-400">Warna</span>} name="color_count"><InputNumber style={{ width: "100%" }} prefix={<BgColorsOutlined />} /></Form.Item>
-                                            </Col>
-                                        </Row>
-                                        <Row gutter={16}>
-                                            <Col span={12}><Form.Item label="Lebar (cm)" name="width_cm"><InputNumber style={{ width: "100%" }} prefix={<ColumnHeightOutlined className="rotate-90" />} /></Form.Item></Col>
-                                            <Col span={12}><Form.Item label="Tinggi (cm)" name="height_cm"><InputNumber style={{ width: "100%" }} prefix={<ColumnHeightOutlined />} /></Form.Item></Col>
-                                        </Row>
-                                    </div>
-
-                                    <div className="bg-blue-900/10 p-6 rounded-xl border border-blue-500/20">
-                                        <Form.Item label={<span className="text-slate-200">Upah Operator (Per Pcs)</span>} name="wage_per_piece" rules={[{ required: true }]}>
-                                            <InputNumber style={{ width: "100%" }} formatter={v => `Rp ${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, '.')} parser={v => v!.replace(/\Rp\s?|(\.*)/g, '')} size="large" className="font-bold text-emerald-400 bg-slate-800" />
+                            <Card className="bg-slate-800 border-slate-700 mb-6">
+                                <Row gutter={24}>
+                                    <Col span={12}>
+                                        <Form.Item 
+                                            label={<span className="text-slate-300">Judul Order</span>} 
+                                            name="title" 
+                                            rules={[{ required: true }]}
+                                        >
+                                            <Input disabled={isLocked} size="large" />
                                         </Form.Item>
-                                        <Form.Item label={<span className="text-slate-300">Harga Jual</span>} name="base_price"><InputNumber style={{ width: "100%" }} formatter={v => `Rp ${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, '.')} parser={v => v!.replace(/\Rp\s?|(\.*)/g, '')} /></Form.Item>
+                                    </Col>
+                                    <Col span={12}>
+                                        <Form.Item 
+                                            label={<span className="text-slate-300">Status Project</span>} 
+                                            name="status"
+                                        >
+                                            <Select 
+                                                disabled={isLocked}
+                                                size="large"
+                                                options={[
+                                                    { value: 'NEW', label: 'Baru / Draft' },
+                                                    { value: 'IN_PROGRESS', label: 'Sedang Berjalan' },
+                                                    { value: 'DONE', label: 'Selesai (Arsipkan)' }, // Hati-hati memilih ini
+                                                ]} 
+                                            />
+                                        </Form.Item>
+                                    </Col>
+                                </Row>
+
+                                <Row gutter={24}>
+                                    <Col span={12}>
+                                        <Form.Item 
+                                            label={<span className="text-slate-300">Deadline</span>} 
+                                            name="deadline" 
+                                            getValueProps={(value) => ({ value: value ? dayjs(value) : "" })}
+                                        >
+                                            <DatePicker disabled={isLocked} style={{ width: "100%" }} format="DD/MM/YYYY" size="large" />
+                                        </Form.Item>
+                                    </Col>
+                                    <Col span={12}>
+                                        <Form.Item 
+                                            label={<span className="text-slate-300">Total Quantity</span>} 
+                                            name="total_quantity"
+                                        >
+                                            <InputNumber 
+                                                style={{ width: "100%" }} 
+                                                disabled={isLocked || isProductionStarted} // Dikunci jika produksi jalan
+                                                size="large"
+                                                className={isProductionStarted ? "bg-slate-700 text-slate-500 cursor-not-allowed" : ""}
+                                            />
+                                        </Form.Item>
+                                        {isProductionStarted && !isLocked && (
+                                            <p className="text-xs text-amber-400 mt-1">
+                                                *Qty dikunci karena QR Code sudah digenerate/diproses.
+                                            </p>
+                                        )}
+                                    </Col>
+                                </Row>
+
+                                {/* PROGRESS BAR VISUAL */}
+                                <div className="mt-4 p-4 bg-slate-900 rounded-lg border border-slate-700">
+                                    <div className="flex justify-between mb-2 text-xs text-slate-400">
+                                        <span>Progress Lapangan</span>
+                                        <span>{finishedBundles} / {totalBundles} Bundle Selesai</span>
                                     </div>
-                                </Col>
-                            </Row>
+                                    <Progress 
+                                        percent={progressPercent} 
+                                        status={progressPercent === 100 ? "success" : "active"} 
+                                        strokeColor={{ '0%': '#10B981', '100%': '#059669' }}
+                                    />
+                                </div>
+                            </Card>
                         </Form>
                     </Edit>
                 </div>

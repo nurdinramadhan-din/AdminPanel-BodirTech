@@ -57,6 +57,7 @@ import { LoanEdit } from "./pages/loans/edit";
 import { ScannerPage } from "./pages/scanner";
 import { PayrollList } from "./pages/payroll/list";
 import { MachineControl } from "./pages/machines/index";
+import { MachineCreate } from "./pages/machines/create";
 
 function App() {
   return (
@@ -82,6 +83,8 @@ function App() {
               {
                 name: "machines",
                 list: "/machines",
+                create: "/machines/create", 
+                edit: "/machines/edit/:id",
                 meta: { label: "Kontrol Mesin" }, 
               },
               {
@@ -183,6 +186,7 @@ function App() {
                 </Route>
 
                 <Route path="/machines" element={<MachineControl />} />
+                <Route path="/machines/create" element={<MachineCreate />} />
 
                 {/* Redirect root (/) ke /dashboard */}
                 <Route index element={<NavigateToResource resource="dashboard" />} />
