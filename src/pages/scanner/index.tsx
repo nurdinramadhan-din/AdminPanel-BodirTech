@@ -2,18 +2,19 @@ import React, { useState, useRef } from "react";
 import { useGetIdentity, useUpdate, useList } from "@refinedev/core";
 import { 
     Card, Input, Button, message, Tag, Typography, 
-    ConfigProvider, theme, Modal 
+    ConfigProvider, theme 
 } from "antd";
 import { 
-    ScanLine, CheckCircle, XCircle, Search, 
-    Zap, Wallet, User 
+    ScanLine, CheckCircle, Search, 
+    Wallet, User, Scissors 
 } from "lucide-react";
 
 const { Title, Text } = Typography;
 
 export const ScannerPage = () => {
     const { darkAlgorithm } = theme;
-    // 1. Identitas Penjahit (User Login)
+    
+    // 1. Identitas User Login
     const { data: user } = useGetIdentity<{ id: string; name?: string }>();
     
     // State
@@ -28,7 +29,6 @@ export const ScannerPage = () => {
     const { refetch: searchBundle, isFetching: isSearching } = useList({
         resource: "spk_bundles",
         filters: [
-            // 🔥 PERBAIKAN UTAMA: .trim() untuk membuang spasi otomatis
             { field: "id", operator: "eq", value: scanInput.trim() }, 
         ],
         meta: { select: "*, projects(*, products(*))" },
@@ -37,7 +37,6 @@ export const ScannerPage = () => {
 
     // FUNGSI 1: Handle Scan
     const handleScan = async () => {
-        // 🔥 VALIDASI: Pastikan input tidak kosong setelah dispasi dibuang
         const cleanInput = scanInput.trim();
         
         if (!cleanInput) {
@@ -61,27 +60,44 @@ export const ScannerPage = () => {
         }
     };
 
-    // FUNGSI 2: Eksekusi Update
-    const handleProcess = (newStatus: string) => {
+    // FUNGSI 2: Eksekusi Update (LOGIC FIX)
+    const handleProcess = (actionType: 'START_CUTTING' | 'FINISH') => {
         if (!scannedBundle || !user) {
             message.error("Data tidak lengkap (Login User / Bundle hilang).");
             return;
         }
 
+        // Tentukan data yang mau diupdate
+        let valuesToUpdate = {};
+
+        if (actionType === 'START_CUTTING') {
+            valuesToUpdate = {
+                // PENTING: Status harus 'IN_PROGRESS' (Sesuai Enum Database)
+                status: 'IN_PROGRESS',      
+                // PENTING: Stage 'CUTTING' untuk memicu Trigger Stok
+                current_stage: 'CUTTING',   
+                updated_at: new Date(),
+                updated_by: user.id
+            };
+        } else {
+            valuesToUpdate = {
+                status: 'DONE',
+                current_stage: 'DONE',
+                updated_at: new Date(),
+                updated_by: user.id
+            };
+        }
+
         updateStatus({
             resource: "spk_bundles",
             id: scannedBundle.id,
-            values: {
-                status: newStatus,
-                updated_at: new Date(),
-                updated_by: user.id // Kirim ID User Login
-            },
+            values: valuesToUpdate,
             successNotification: (_data, _values) => {
                 return {
-                    message: newStatus === 'DONE' ? "Gaji Cair! 💸" : "Mulai Jahit",
-                    description: newStatus === 'DONE' 
+                    message: actionType === 'FINISH' ? "Gaji Cair! 💸" : "Cutting Dimulai ✂️",
+                    description: actionType === 'FINISH' 
                         ? `Saldo dompet Anda bertambah otomatis.` 
-                        : `Status bundle berubah menjadi ${newStatus}`,
+                        : `Stok kain otomatis dipotong dari gudang.`,
                     type: "success",
                 };
             }
@@ -89,10 +105,10 @@ export const ScannerPage = () => {
             onSuccess: () => {
                 setScannedBundle(null);
                 setScanInput("");
-                // Fokus balik ke input agar siap scan lagi
                 setTimeout(() => inputRef.current?.focus(), 100); 
             },
             onError: (error) => {
+                console.error(error);
                 message.error("Gagal update status: " + error?.message);
             }
         });
@@ -159,7 +175,9 @@ export const ScannerPage = () => {
                         <div className="animate-in fade-in slide-in-from-bottom-4">
                             <div className="bg-slate-800 p-4 rounded-lg border border-slate-600 mb-4 relative overflow-hidden">
                                 <div className="absolute top-0 right-0 p-2 opacity-20 pointer-events-none">
-                                    <h1 className="text-6xl font-bold text-white m-0">{scannedBundle.status}</h1>
+                                    <h1 className="text-6xl font-bold text-white m-0">
+                                        {scannedBundle.current_stage || scannedBundle.status}
+                                    </h1>
                                 </div>
 
                                 <div className="relative z-10">
@@ -189,21 +207,23 @@ export const ScannerPage = () => {
                             </div>
 
                             <div className="grid grid-cols-2 gap-3">
+                                {/* TOMBOL 1: CUTTING */}
                                 <Button 
                                     size="large"
-                                    icon={<Zap size={18} />}
-                                    onClick={() => handleProcess('IN_PROGRESS')}
-                                    disabled={scannedBundle.status === 'IN_PROGRESS' || scannedBundle.status === 'DONE'}
+                                    icon={<Scissors size={18} />} 
+                                    onClick={() => handleProcess('START_CUTTING')}
+                                    disabled={['CUTTING', 'SEWING', 'DONE', 'FINISHING'].includes(scannedBundle.current_stage)}
                                     className="bg-amber-600 border-none text-white font-bold h-12 hover:bg-amber-500 disabled:bg-slate-800 disabled:text-slate-600"
                                 >
-                                    Mulai Jahit
+                                    Mulai Cutting
                                 </Button>
                                 
+                                {/* TOMBOL 2: SELESAI */}
                                 <Button 
                                     size="large"
                                     type="primary"
                                     icon={<CheckCircle size={18} />}
-                                    onClick={() => handleProcess('DONE')}
+                                    onClick={() => handleProcess('FINISH')}
                                     disabled={scannedBundle.status === 'DONE'}
                                     loading={isUpdating}
                                     className="bg-emerald-600 border-none font-bold h-12 hover:bg-emerald-500 disabled:bg-slate-800 disabled:text-slate-600"

@@ -58,6 +58,7 @@ import { ScannerPage } from "./pages/scanner";
 import { PayrollList } from "./pages/payroll/list";
 import { MachineControl } from "./pages/machines/index";
 import { MachineCreate } from "./pages/machines/create";
+import { POSPage } from "./pages/pos";
 
 function App() {
   return (
@@ -107,6 +108,19 @@ function App() {
                 meta: { label: "Gaji & Saldo" },
               },
               {
+                name: "pos",
+                list: POSPage, // ✅ Hubungkan ke halaman POS
+                meta: {
+                label: "Kasir Toko",
+                canDelete: false,
+               }
+        },
+        {
+            name: "store-inventory",
+            // list: StoreInventoryPage, // (Nanti dibuat di tahap berikutnya)
+            meta: { label: "Stok Toko" } 
+        }
+                ,{
                 name: "materials",
                 list: "/materials",
                 create: "/materials/create",
@@ -196,7 +210,10 @@ function App() {
                   <Route path="create" element={<LoanCreate />} />
                   <Route path="edit/:id" element={<LoanEdit />} />
                 </Route>
-
+                <Route path="/pos">
+                  <Route index element={<POSPage />} />
+                </Route>
+                
                 <Route path="/payroll">
                    <Route index element={<PayrollList />} />
                 </Route>
